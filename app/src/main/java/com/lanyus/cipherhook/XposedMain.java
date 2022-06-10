@@ -1,11 +1,17 @@
 package com.lanyus.cipherhook;
 
-import android.net.ConnectivityManager;
-import android.net.NetworkCapabilities;
-import android.net.NetworkInfo;
+import static com.lanyus.cipherhook.EnumerateClass.getClassNameList;
+
+import android.content.Context;
+
+import com.google.gson.Gson;
 
 import org.apache.commons.codec.binary.Base64;
 
+import java.util.ArrayList;
+import java.util.Iterator;
+
+import dalvik.system.BaseDexClassLoader;
 import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
@@ -23,6 +29,18 @@ public class XposedMain implements IXposedHookLoadPackage {
         XposedBridge.log("com.lanyus.cipherhook Loaded app: " + lpparam.packageName);
 
         hook(lpparam.classLoader);
+
+        new Timing(lpparam, false) {
+            @Override
+            protected void onNewActivity(XC_MethodHook.MethodHookParam param) {
+                super.onNewActivity(param);
+                try {
+                    hook(lpparam.classLoader);
+                } catch (Exception e) {
+                    XposedBridge.log(e.getLocalizedMessage());
+                }
+            }
+        };
     }
 
     public void hook(ClassLoader classLoader) {
@@ -65,6 +83,57 @@ public class XposedMain implements IXposedHookLoadPackage {
             }
         });
 
+        XposedHelpers.findAndHookMethod("java.security.MessageDigest", classLoader, "getInstance", String.class, new XC_MethodHook() {
+            @Override
+            protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                super.afterHookedMethod(param);
+                String method = (String) param.args[0];
+                XposedBridge.log("com.lanyus.cipherhook java.security.MessageDigest.getInstance('" + method + "')");
+            }
+        });
 
+        XposedHelpers.findAndHookMethod("java.security.MessageDigest", classLoader, "update", byte[].class, new XC_MethodHook() {
+            @Override
+            protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                super.afterHookedMethod(param);
+                byte[] plain = (byte[]) param.args[0];
+                XposedBridge.log("com.lanyus.cipherhook java.security.MessageDigest.update('" + Base64.encodeBase64String(plain) + "')");
+            }
+        });
+
+        XposedHelpers.findAndHookMethod("java.lang.String", classLoader, "substring", int.class, new XC_MethodHook() {
+            @Override
+            protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                super.afterHookedMethod(param);
+                String thisObject = (String) param.thisObject;
+                int arg = (int) param.args[0];
+                XposedBridge.log("com.lanyus.cipherhook java.lang.String.substring('" + thisObject + ", " + arg + "')");
+//                printStackTrace();
+            }
+        });
+
+        XposedHelpers.findAndHookMethod("java.lang.String", classLoader, "substring", int.class, int.class, new XC_MethodHook() {
+            @Override
+            protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                super.afterHookedMethod(param);
+                String thisObject = (String) param.thisObject;
+                int arg1 = (int) param.args[0];
+                int arg2 = (int) param.args[1];
+                XposedBridge.log("com.lanyus.cipherhook java.lang.String.substring('" + thisObject + ", " + arg1 + ", " + arg2 + "')");
+//                printStackTrace();
+            }
+        });
+
+    }
+
+    private static void printStackTrace() {
+        XposedBridge.log("--------------->");
+        Throwable ex = new Throwable();
+        StackTraceElement[] stackElements = ex.getStackTrace();
+        for (int i = 0; i < stackElements.length; i++) {
+            StackTraceElement element = stackElements[i];
+            XposedBridge.log("at " + element.getClassName() + "." + element.getMethodName() + "(" + element
+                    .getFileName() + ":" + element.getLineNumber() + ")");
+        }
     }
 }
